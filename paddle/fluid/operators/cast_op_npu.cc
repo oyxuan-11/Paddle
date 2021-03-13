@@ -18,9 +18,21 @@ limitations under the License. */
 
 #include "paddle/fluid/operators/cast_op.h"
 #include "paddle/fluid/operators/npu_op_runner.h"
+//#include "npu_op_runner.cc"
 
 namespace paddle {
 namespace operators {
+
+static std::map<framework::proto::VarType::Type, aclDataType>
+    DTYPE_2_ACL_DTYPE = {
+        {framework::proto::VarType::BOOL, ACL_BOOL},
+        {framework::proto::VarType::INT16, ACL_INT16},
+        {framework::proto::VarType::INT32, ACL_INT32},
+        {framework::proto::VarType::INT64, ACL_INT64},
+        {framework::proto::VarType::FP16, ACL_FLOAT16},
+        {framework::proto::VarType::FP32, ACL_FLOAT},
+        {framework::proto::VarType::FP64, ACL_DOUBLE},
+};
 
 using Tensor = framework::Tensor;
 
@@ -30,41 +42,28 @@ class CastNPUKernel : public framework::OpKernel<T> {
   void Compute(const framework::ExecutionContext& ctx) const override {
     auto* x = ctx.Input<Tensor>("X");
     int dtype = ctx.Attr<int>("out_dtype");
-    int aclDtype = 4;
+    int aclDtype = 0;
 
     auto* out = ctx.Output<Tensor>("Out");
 
     auto place = ctx.GetPlace();
 
-    if (dtype == 0) {
-        aclDtype = 12;
-    } else if (dtype == 1) {
-        aclDtype = 6;
-    } else if (dtype == 2) {
-        aclDtype = 3;
-    } else if (dtype == 3) {
-        aclDtype = 9;
-    } else if (dtype == 4) {
-        aclDtype = 1;
-    } else if (dtype == 5) {
-        aclDtype = 0;
-    } else if (dtype == 6) {
-        aclDtype = 11;
-    }
+    auto iter = DTYPE_2_ACL_DTYPE.find(static_cast<framework::proto::VarType::Type>(dtype));
+    aclDtype = iter->second;
 
-    if (aclDtype == 0) {
+    if (dtype == framework::proto::VarType::FP32) {
         out->mutable_data<float>(place);
-    } else if (aclDtype == 1) {
+    } else if (dtype == framework::proto::VarType::FP16) {
         out->mutable_data<paddle::platform::float16>(place);
-    } else if (aclDtype == 6) {
+    } else if (dtype == framework::proto::VarType::INT16) {
         out->mutable_data<int16_t>(place);
-    } else if (aclDtype == 3) {
+    } else if (dtype == framework::proto::VarType::INT32) {
         out->mutable_data<int32_t>(place);
-    } else if (aclDtype == 9) {
+    } else if (dtype == framework::proto::VarType::INT64) {
         out->mutable_data<int64_t>(place);
-    } else if (aclDtype == 11) {
+    } else if (dtype == framework::proto::VarType::FP64) {
         out->mutable_data<double>(place);
-    } else if (aclDtype == 12) {
+    } else if (dtype == framework::proto::VarType::BOOL) {
         out->mutable_data<bool>(place);
     }
 
@@ -72,13 +71,12 @@ class CastNPUKernel : public framework::OpKernel<T> {
         ctx.template device_context<paddle::platform::NPUDeviceContext>()
             .stream();
 
-    auto runner = NpuOpRunner("Cast", {*x}, {*out},
-            {{"dst_type", static_cast<int32_t>(aclDtype)}});
+    auto runner = NpuOpRunner("Cast", {*x}, {*out}, {{"dst_type", static_cast<int32_t>(aclDtype)}});
     runner.Run(stream);
   }
 };
 }  // namespace operators
-}  // namespace paddle
+}  // namespace paddleaclDtype
 
 namespace ops = paddle::operators;
 
